@@ -1,0 +1,49 @@
+name: Multi-AI Strategy Review
+
+on:
+  push:
+    paths:
+      - '*_REVIEW_REQUEST.md'
+  workflow_dispatch:
+
+jobs:
+  review-with-all-ais:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic openai google-generativeai mistralai requests
+
+      - name: Run Multi-AI Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+        run: python scripts/multi_ai_review.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-results
+          path: AI_REVIEW_RESULTS.md
+
+      - uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const results = fs.readFileSync('AI_REVIEW_RESULTS.md', 'utf8');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Multi-AI Strategy Review Results',
+              body: results,
+              labels: ['ai-review']
+            });
