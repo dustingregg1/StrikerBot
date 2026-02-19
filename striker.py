@@ -79,6 +79,20 @@ def fetch_ohlcv(symbol: str, timeframe: str, limit: int = 200) -> list:
         return []
 
 
+def simulate_fill_price(price: float, side: str) -> float:
+    """Apply slippage to paper trade fill price."""
+    slippage = price * (cfg.SLIPPAGE_BPS / 10000)
+    if side == 'buy':
+        return price + slippage  # Buy slightly higher
+    return price - slippage      # Sell slightly lower
+
+
+def calculate_trade_fee(notional_usd: float, is_maker: bool = False) -> float:
+    """Calculate simulated fee for a paper trade."""
+    fee_pct = cfg.MAKER_FEE_PCT if is_maker else cfg.TAKER_FEE_PCT
+    return notional_usd * (fee_pct / 100)
+
+
 def extract_price_arrays(ohlcv: list) -> Dict[str, list]:
     """Extract price arrays from OHLCV data."""
     if not ohlcv:
@@ -126,22 +140,28 @@ def run_cycle(
         )
 
         if exit_signal.should_exit:
-            # Paper trade: simulate exit
-            pnl = (current_price - position.entry_price) * position.quantity
+            # Paper trade: simulate exit with slippage + fees
+            fill_price = simulate_fill_price(current_price, 'sell')
+            gross_pnl = (fill_price - position.entry_price) * position.quantity
+            notional = fill_price * position.quantity
+            exit_fee = calculate_trade_fee(notional, is_maker=False)
+            # Entry fee was already deducted at entry time
+            net_pnl = gross_pnl - exit_fee
             log.info(
-                f"EXIT {position.symbol} @ ${current_price:,.2f} | "
-                f"Reason: {exit_signal.exit_reason} | PnL: ${pnl:.2f}"
+                f"EXIT {position.symbol} @ ${fill_price:,.2f} (mid ${current_price:,.2f}) | "
+                f"Reason: {exit_signal.exit_reason} | "
+                f"Gross: ${gross_pnl:.2f} | Fee: ${exit_fee:.2f} | Net: ${net_pnl:.2f}"
             )
 
             journal.record_exit(
                 trade_id=trade_id,
-                exit_price=current_price,
+                exit_price=fill_price,
                 exit_reason=exit_signal.exit_reason,
-                fees_usd=0.0,  # Paper trading
+                fees_usd=exit_fee,
             )
 
-            state['equity_usd'] += pnl
-            guard.record_trade_result(pnl)
+            state['equity_usd'] += net_pnl
+            guard.record_trade_result(net_pnl)
             del state['positions'][trade_id]
         else:
             # Update highest high for trailing stop
@@ -190,9 +210,13 @@ def run_cycle(
 
         if guard_check.allowed and sizing['position_usd'] > 0:
             trade_id = str(uuid.uuid4())[:8]
+            # Simulate entry fill with slippage + fee
+            fill_price = simulate_fill_price(current_price, 'buy')
+            entry_fee = calculate_trade_fee(sizing['position_usd'], is_maker=False)
+            state['equity_usd'] -= entry_fee  # Deduct entry fee immediately
             log.info(
-                f"ENTRY {cfg.SYMBOL} LONG @ ${current_price:,.2f} | "
-                f"Size: ${sizing['position_usd']:.2f} | "
+                f"ENTRY {cfg.SYMBOL} LONG @ ${fill_price:,.2f} (mid ${current_price:,.2f}) | "
+                f"Size: ${sizing['position_usd']:.2f} | Fee: ${entry_fee:.2f} | "
                 f"Stop: ${stop_price:,.2f} | "
                 f"Risk: {risk_pct:.1f}% | "
                 f"Signal: {entry_signal.details}"
@@ -204,7 +228,7 @@ def run_cycle(
                 symbol=cfg.SYMBOL,
                 side='long',
                 strategy='momentum_rider',
-                entry_price=current_price,
+                entry_price=fill_price,
                 entry_time=time.time(),
                 entry_reason=str(entry_signal.details),
                 position_usd=sizing['position_usd'],
@@ -214,6 +238,7 @@ def run_cycle(
                 atr_at_entry=calculate_atr(
                     prices['highs'], prices['lows'], prices['closes']
                 ),
+                fees_usd=entry_fee,
                 paper_trade=cfg.PAPER_TRADING,
             )
             journal.record_entry(trade)
@@ -222,12 +247,12 @@ def run_cycle(
             state['positions'][trade_id] = MomentumPosition(
                 trade_id=trade_id,
                 symbol=cfg.SYMBOL,
-                entry_price=current_price,
+                entry_price=fill_price,
                 entry_time=time.time(),
                 quantity=sizing['quantity'],
                 position_usd=sizing['position_usd'],
                 stop_price=stop_price,
-                highest_high=current_price,
+                highest_high=fill_price,
                 trailing_stop=stop_price,
             ).__dict__
         elif not guard_check.allowed:

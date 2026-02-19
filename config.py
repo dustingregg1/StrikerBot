@@ -109,6 +109,15 @@ DEAD_MAN_SWITCH_ENABLED = True
 DEAD_MAN_SWITCH_TIMEOUT_SECONDS = 120  # 2x cycle for striker (faster cycles)
 
 # =============================================================================
+# FEES & SLIPPAGE (Paper Trading Simulation)
+# Verified via Kraken /private/TradeVolume API, 2026-02-18
+# =============================================================================
+MAKER_FEE_PCT = 0.25  # $0-volume tier
+TAKER_FEE_PCT = 0.40  # $0-volume tier
+SLIPPAGE_BPS = 10     # 10 basis points simulated slippage
+ASSUME_TAKER = True   # Momentum entries are usually taker (crossing spread)
+
+# =============================================================================
 # CYCLE TIMING
 # =============================================================================
 CYCLE_INTERVAL_SECONDS = 60  # 1 minute cycles (striker is fast)
