@@ -49,12 +49,13 @@ class PortfolioGuard:
         self,
         risk_pct: float,
         equity_usd: float,
+        now: float = None,
     ) -> GuardResult:
         """
         Check if a new entry is allowed. Returns GuardResult.
         ALL 5 rules checked in order. First violation stops.
         """
-        now = time.time()
+        now = now if now is not None else time.time()
 
         # Reset daily PnL at midnight UTC
         self._maybe_reset_daily(now)
@@ -102,14 +103,15 @@ class PortfolioGuard:
 
         return GuardResult(allowed=True, reason="All 5 rules passed")
 
-    def record_trade_result(self, pnl_usd: float) -> None:
+    def record_trade_result(self, pnl_usd: float, now: float = None) -> None:
         """Record a completed trade for daily tracking."""
         self.daily_pnl_usd += pnl_usd
 
         if pnl_usd < 0:
             self.consecutive_losses += 1
             if self.consecutive_losses >= self.consecutive_loss_pause_count:
-                self.pause_until = time.time() + (self.consecutive_loss_pause_hours * 3600)
+                current_time = now if now is not None else time.time()
+                self.pause_until = current_time + (self.consecutive_loss_pause_hours * 3600)
         else:
             self.consecutive_losses = 0
 

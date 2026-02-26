@@ -70,12 +70,13 @@ class TradeJournal:
         exit_price: float,
         exit_reason: str,
         fees_usd: float = 0.0,
+        now: float = None,
     ) -> Optional[TradeRecord]:
         """Update a trade with exit information."""
         for trade in reversed(self._trades):
             if trade.trade_id == trade_id and trade.exit_time == 0.0:
                 trade.exit_price = exit_price
-                trade.exit_time = time.time()
+                trade.exit_time = now if now is not None else time.time()
                 trade.exit_reason = exit_reason
                 trade.fees_usd = fees_usd
                 trade.hold_duration_hours = (trade.exit_time - trade.entry_time) / 3600
@@ -96,15 +97,15 @@ class TradeJournal:
         with open(self.filepath, 'a') as f:
             f.write(json.dumps(asdict(trade)) + '\n')
 
-    def get_completed_trades(self, days: int = 7) -> List[TradeRecord]:
+    def get_completed_trades(self, days: int = 7, as_of: float = None) -> List[TradeRecord]:
         """Get completed trades from the last N days."""
-        cutoff = time.time() - (days * 86400)
+        cutoff = (as_of if as_of is not None else time.time()) - (days * 86400)
         return [
             t for t in self._trades
             if t.exit_time > 0 and t.exit_time >= cutoff
         ]
 
-    def generate_scorecard(self, days: int = 7) -> Dict[str, Any]:
+    def generate_scorecard(self, days: int = 7, as_of: float = None) -> Dict[str, Any]:
         """
         Generate weekly scorecard.
 
@@ -114,7 +115,7 @@ class TradeJournal:
         - Profit factor: >1.5
         - Fee drag: <20%
         """
-        trades = self.get_completed_trades(days)
+        trades = self.get_completed_trades(days, as_of=as_of)
         if not trades:
             return {'period_days': days, 'total_trades': 0, 'message': 'No completed trades'}
 
@@ -151,9 +152,9 @@ class TradeJournal:
             ),
         }
 
-    def format_scorecard(self, days: int = 7) -> str:
+    def format_scorecard(self, days: int = 7, as_of: float = None) -> str:
         """Format scorecard as readable string."""
-        sc = self.generate_scorecard(days)
+        sc = self.generate_scorecard(days, as_of=as_of)
         if sc.get('total_trades', 0) == 0:
             return f"No completed trades in last {days} days"
 

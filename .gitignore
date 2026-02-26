@@ -30,6 +30,9 @@ state.json
 *.log
 trade_journal.jsonl
 
+# Backtest data and outputs
+data/
+
 # Coverage
 .coverage
 htmlcov/

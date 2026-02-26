@@ -210,6 +210,7 @@ class MomentumRider:
         highs: list[float],
         lows: list[float],
         closes: list[float],
+        now: float = None,
     ) -> MomentumSignal:
         """
         Check if position should be exited.
@@ -238,7 +239,8 @@ class MomentumRider:
                 signal.exit_reason = 'trailing_stop'
 
         # Check max hold duration
-        hold_hours = (time.time() - position.entry_time) / 3600
+        current_time = now if now is not None else time.time()
+        hold_hours = (current_time - position.entry_time) / 3600
         if hold_hours > self.max_hold_days * 24:
             signal.should_exit = True
             signal.exit_reason = 'max_duration'
